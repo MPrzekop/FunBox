@@ -46,6 +46,7 @@ int             switch1[2], switch2[2], switch3[2], dip[4];
 float prdecay, plowfreq, plowshelf, pmix, phighfreq, phighshelf;
 
 CloudSeed::ReverbController* reverb = 0;
+CloudSeed::ReverbController* reverbStub = 0;
 
 // This is used in the modified CloudSeed code for allocating
 // delay line memory to SDRAM (64MB available on Daisy)
@@ -152,71 +153,79 @@ bool knobMoved(float old_value, float new_value)
     }
 }
 
-void updateSwitch1()  // TODO: Tune these settings so that they make 3 ear pleasing stages of "Lushness"
-{
+void updateSwitch1Context(CloudSeed::ReverbController* reverbContext){
+if (toggleValues[0] == 0) {
 
-    if (toggleValues[0] == 0) {
+        reverbContext->SetParameter(::Parameter2::LateDiffusionEnabled, 0.0);
+        reverbContext->SetParameter(::Parameter2::LateDiffusionStages,  0.4);
 
-        reverb->SetParameter(::Parameter2::LateDiffusionEnabled, 0.0);
-        reverb->SetParameter(::Parameter2::LateDiffusionStages,  0.4);
+        reverbContext->SetParameter(::Parameter2::LateStageTap, 0.0);
+        reverbContext->SetParameter(::Parameter2::Interpolation, 0.0);
 
-        reverb->SetParameter(::Parameter2::LateStageTap, 0.0);
-        reverb->SetParameter(::Parameter2::Interpolation, 0.0);
-
-        reverb->SetParameter(::Parameter2::LineCount, 1); 
+        reverbContext->SetParameter(::Parameter2::LineCount, 1); 
 
     } else if (toggleValues[0] == 2) {
 
-        reverb->SetParameter(::Parameter2::LateDiffusionEnabled, 1.0);
-        reverb->SetParameter(::Parameter2::LateDiffusionStages, 1.0);
+        reverbContext->SetParameter(::Parameter2::LateDiffusionEnabled, 1.0);
+        reverbContext->SetParameter(::Parameter2::LateDiffusionStages, 1.0);
 
-        reverb->SetParameter(::Parameter2::LateStageTap, 1.0);
-        reverb->SetParameter(::Parameter2::Interpolation, 1.0);
+        reverbContext->SetParameter(::Parameter2::LateStageTap, 1.0);
+        reverbContext->SetParameter(::Parameter2::Interpolation, 1.0);
 
-        reverb->SetParameter(::Parameter2::LineCount, 2); 
+        reverbContext->SetParameter(::Parameter2::LineCount, 2); 
 
     } else {
 
-        reverb->SetParameter(::Parameter2::LateDiffusionEnabled, 1.0);
-        reverb->SetParameter(::Parameter2::LateDiffusionStages, 0.2);
+        reverbContext->SetParameter(::Parameter2::LateDiffusionEnabled, 1.0);
+        reverbContext->SetParameter(::Parameter2::LateDiffusionStages, 0.2);
 
-        reverb->SetParameter(::Parameter2::LateStageTap, 1.0);
-        reverb->SetParameter(::Parameter2::Interpolation, 0.0);
+        reverbContext->SetParameter(::Parameter2::LateStageTap, 1.0);
+        reverbContext->SetParameter(::Parameter2::Interpolation, 0.0);
 
-        reverb->SetParameter(::Parameter2::LineCount, 2); 
+        reverbContext->SetParameter(::Parameter2::LineCount, 2); 
 
     }
-
 }
 
+void updateSwitch1()  // TODO: Tune these settings so that they make 3 ear pleasing stages of "Lushness"
+{
+    updateSwitch1Context(reverb);
+    updateSwitch1Context(reverbStub);
+}
+
+void updateSwitch2Context(CloudSeed::ReverbController* reverbContext){
+     if (toggleValues[1] == 0) {
+        reverbContext->SetParameter(::Parameter2::LineModAmount, 0.1); 
+        reverbContext->SetParameter(::Parameter2::LineModRate, 0.1);
+    } else if (toggleValues[1] == 2) {
+        reverbContext->SetParameter(::Parameter2::LineModAmount, 0.9); 
+        reverbContext->SetParameter(::Parameter2::LineModRate, 0.6); 
+    } else {
+        reverbContext->SetParameter(::Parameter2::LineModAmount, 0.5); 
+        reverbContext->SetParameter(::Parameter2::LineModRate, 0.3); 
+    }
+}
 
 void updateSwitch2() 
 {
-
-    if (toggleValues[1] == 0) {
-        reverb->SetParameter(::Parameter2::LineModAmount, 0.1); 
-        reverb->SetParameter(::Parameter2::LineModRate, 0.1);
-    } else if (toggleValues[1] == 2) {
-        reverb->SetParameter(::Parameter2::LineModAmount, 0.9); 
-        reverb->SetParameter(::Parameter2::LineModRate, 0.6); 
-    } else {
-        reverb->SetParameter(::Parameter2::LineModAmount, 0.5); 
-        reverb->SetParameter(::Parameter2::LineModRate, 0.3); 
-    }
-
+    updateSwitch2Context(reverb);
+    updateSwitch2Context(reverbStub);
 }
 
-
+void updateSwitch3Context(CloudSeed::ReverbController* reverbContext){
+     if (toggleValues[2] == 0) {
+        reverbContext->SetParameter(::Parameter2::PreDelay, 0.0);
+    } else if (toggleValues[2] == 2) {
+        reverbContext->SetParameter(::Parameter2::PreDelay, 0.2); // 200ms
+    } else {
+        reverbContext->SetParameter(::Parameter2::PreDelay, 0.1); // 100ms
+    }
+}
 
 void updateSwitch3() 
 {
-    if (toggleValues[2] == 0) {
-        reverb->SetParameter(::Parameter2::PreDelay, 0.0);
-    } else if (toggleValues[2] == 2) {
-        reverb->SetParameter(::Parameter2::PreDelay, 0.2); // 200ms
-    } else {
-        reverb->SetParameter(::Parameter2::PreDelay, 0.1); // 100ms
-    }
+    updateSwitch3Context(reverb);
+    updateSwitch3Context(reverbStub);
 }
 
 
@@ -381,153 +390,31 @@ void UpdateSwitches()
     update_switches = false; // only update once after turning off preset
 }
 
-
-// This runs at a fixed rate, to prepare audio samples
-static void AudioCallback(AudioHandle::InputBuffer  in,
-                          AudioHandle::OutputBuffer out,
-                          size_t                    size)
-{
-
-    hw.ProcessAnalogControls();
-    hw.ProcessDigitalControls();
-    led1.Update();
-    led2.Update();
-
-    UpdateButtons();
-    UpdateSwitches();
+static float**  inCache;                  
+static bool _messageWaiting = false;        
+static AudioHandle::OutputBuffer outCache;
+static AudioHandle::OutputBuffer outCacheStub;
+static size_t                    sizeCache;
 
 
-    // Knob and Expression Processing ////////////////////
-
-    // float knobValues[6]; // moved to global
-    float newExpressionValues[6];
-
-    if (!use_preset) {  // TODO Do I want to lock out the knobs when using a preset?
-
-        // Knob 1
-        if (!midi_control[0])   // If not under midi control, use knob ADC
-            pknobValues[0] = knobValues[0] = rdecay.Process();
-        else if (knobMoved(pknobValues[0], rdecay.Process()))  // If midi controlled, watch for knob movement to end Midi control
-            midi_control[0] = false;
-
-        // Knob 2
-        if (!midi_control[1])   // If not under midi control, use knob ADC
-            pknobValues[1] = knobValues[1] = lowfreq.Process();
-        else if (knobMoved(pknobValues[1], lowfreq.Process()))  // If midi controlled, watch for knob movement to end Midi control
-            midi_control[1] = false;
-
-        // Knob 3
-        if (!midi_control[2])   // If not under midi control, use knob ADC
-            pknobValues[2] = knobValues[2] = highfreq.Process();
-        else if (knobMoved(pknobValues[2], highfreq.Process()))  // If midi controlled, watch for knob movement to end Midi control
-            midi_control[2] = false;
-
-        // Knob 4
-        if (!midi_control[3])   // If not under midi control, use knob ADC
-            pknobValues[3] = knobValues[3] = mix.Process();
-        else if (knobMoved(pknobValues[3], mix.Process()))  // If midi controlled, watch for knob movement to end Midi control
-            midi_control[3] = false;
-    
-
-        // Knob 5
-        if (!midi_control[4])   // If not under midi control, use knob ADC
-            pknobValues[4] = knobValues[4] = lowshelf.Process();
-        else if (knobMoved(pknobValues[4], lowshelf.Process()))  // If midi controlled, watch for knob movement to end Midi control
-            midi_control[4] = false;
-    
-
-        // Knob 6
-        if (!midi_control[5])   // If not under midi control, use knob ADC
-            pknobValues[5] = knobValues[5] = highshelf.Process();
-        else if (knobMoved(pknobValues[5], highshelf.Process()))  // If midi controlled, watch for knob movement to end Midi control
-            midi_control[5] = false;
-
-    }
-
-    float vexpression = expression.Process(); // 0 is heel (up), 1 is toe (down)
-    expHandler.Process(vexpression, knobValues, newExpressionValues);
-
-
-    // If in expression set mode, set LEDS accordingly
-    if (expHandler.isExpressionSetMode()) {
-        led1.Set(expHandler.returnLed1Brightness());
-        led2.Set(expHandler.returnLed2Brightness());
-    }
-  
-
-    float vrdecay = newExpressionValues[0];
-    float vlowfreq = newExpressionValues[1];
-    float vhighfreq = newExpressionValues[2];
-    float vmix = newExpressionValues[3];
-    float vlowshelf = newExpressionValues[4];
-    float vhighshelf = newExpressionValues[5];
-
-
-    if (pmix != vmix) {
-        if (knobMoved(pmix, vmix)) {
-            //    A cheap mostly energy constant crossfade from SignalSmith Blog
-            float x2 = 1.0 - vmix;
-            float A = vmix*x2;
-            float B = A * (1.0 + 1.4186 * A);
-            float C = B + vmix;
-            float D = B + x2;
-
-            wetMix = C * C;
-            dryMix = D * D;
-            pmix = vmix;
-        }
-    }
-
-
-    // Set Reverb Parameters ///////////////
-    if (knobMoved(prdecay, vrdecay)) {
-
-        reverb->SetParameter(::Parameter2::LineDecay, (vrdecay * 0.65 + 0.35)); // Range 0.35 to 1.0
-        prdecay = vrdecay;
-    }
-
-    if (knobMoved(plowfreq, vlowfreq)) {
-
-        reverb->SetParameter(::Parameter2::PostLowShelfFrequency, vlowfreq);
-        plowfreq = vlowfreq;
-    }
-
-    if (knobMoved(plowshelf, vlowshelf)) {
-
-        reverb->SetParameter(::Parameter2::PostLowShelfGain, vlowshelf);
-        plowshelf = vlowshelf;
-    }
-
-    if (knobMoved(phighfreq, vhighfreq)) {
-
-        reverb->SetParameter(::Parameter2::PostHighShelfFrequency, vhighfreq);
-        phighfreq = vhighfreq;
-    }
-
-    if (knobMoved(phighshelf, vhighshelf)) {
-
-        reverb->SetParameter(::Parameter2::PostHighShelfGain, vhighshelf * 0.7 + 0.3);
-        phighshelf = vhighshelf;
-    }
-
+void ProcessCallback(float** input, float** output, size_t size, 
+CloudSeed::ReverbController* reverbContext){
     float inL[1];
     float outL[1];
     float inR[1];
     float outR[1];
-
     float inputL;
     float inputR;
-
-    if(!bypass) {
+        if(!bypass) {
         for (size_t i = 0; i < size; i++)
         {
             // Stereo or MISO 
             if (dipValues[0]) {  // Stereo
-                inputL = in[0][i];
-                inputR = in[1][i];
+                inputL = input[0][i];
+                inputR = input[1][i];
             } else {     //MISO
-                inputL = in[0][i];
-                inputR = in[0][i];
+                inputL = input[0][i];
+                inputR = input[0][i];
             }
  
 
@@ -535,10 +422,10 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             inR[0] = inputR;
 
 
-            reverb->Process(inL, inR, outL, outR, 1); 
+            reverbContext->Process(inL, inR, outL, outR, 1); 
             // Bears. Beets. Battlestar Galactica.
-            out[0][i] = inputL * dryMix + outL[0] * wetMix;
-            out[1][i] = inputR * dryMix + outR[0] * wetMix;
+            output[0][i] = inputL * dryMix + outL[0] * wetMix;
+            output[1][i] = inputR * dryMix + outR[0] * wetMix;
 
 
         }
@@ -548,16 +435,33 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         {
             // Stereo or MISO 
             if (dipValues[0]) {  // Stereo
-                inputL = in[0][i];
-                inputR = in[1][i];
+                inputL = input[0][i];
+                inputR = input[1][i];
             } else {     //MISO
-                inputL = in[0][i];
-                inputR = in[0][i];
+                inputL = input[0][i];
+                inputR = input[0][i];
             }
-            out[0][i] = inputL;
-            out[1][i] = inputR;
+            output[0][i] = inputL;
+            output[1][i] = inputR;
         }
     }
+}
+
+// This runs at a fixed rate, to prepare audio samples
+static void AudioCallback(AudioHandle::InputBuffer  in,
+                          AudioHandle::OutputBuffer out,
+                          size_t                    size)
+{
+    _messageWaiting = true;
+    sizeCache = size;
+    for (size_t i = 0; i < size; i++)
+    {
+        inCache[0][i] = in[0][i];
+        inCache[1][i] = in[1][i];
+        out[0][i] = outCache[0][i];
+        out[1][i] = outCache[1][i];
+    }
+
 }
 
 
@@ -628,21 +532,37 @@ int main(void)
 {
     float samplerate;
 
-    hw.Init();
+    hw.Init(true);
     samplerate = hw.AudioSampleRate();
 
     AudioLib::ValueTables::Init();
     CloudSeed::FastSin::Init();
 
     reverb = new CloudSeed::ReverbController(samplerate);
+    reverbStub = new CloudSeed::ReverbController(samplerate);
 
     using namespace CloudSeed;
     reverb->ClearBuffers();
     reverb->initFactoryRubiKaFields();
     reverb->SetParameter(::Parameter2::LineCount, 2); // TODO Set based on reverb type
 
-
+    reverbStub->ClearBuffers();
+    reverbStub->initFactoryRubiKaFields();
+    reverbStub->SetParameter(::Parameter2::LineCount, 2); // TODO Set based on reverb type
+    
     hw.SetAudioBlockSize(48);
+
+    inCache = new float*[2];
+    outCache = new float*[2];
+    outCacheStub = new float*[2];
+    int blockSize = hw.AudioBlockSize();
+    for (size_t i = 0; i < 2; i++)
+    {
+        inCache[i] = new float[blockSize];
+        outCache[i] = new float[blockSize];
+        outCacheStub[i] = new float[blockSize];
+    }
+    
 
     rdecay.Init(hw.knob[Funbox::KNOB_1], 0.0f, 1.0f, ::daisy::Parameter::LINEAR); // LOG to go high fast?
     lowfreq.Init(hw.knob[Funbox::KNOB_2], 0.0f, 1.0f, ::daisy::Parameter::LINEAR);
@@ -730,6 +650,140 @@ int main(void)
             blink = 0;
 	    }
 
-	    System::Delay(100);
+	
+    led1.Update();
+    led2.Update();
+
+
+        if(_messageWaiting){
+            _messageWaiting = false;
+            ProcessCallback(inCache,outCache,sizeCache,reverb);
+        }
+        else{
+                hw.ProcessAnalogControls();
+    hw.ProcessDigitalControls();
+                UpdateButtons();
+    UpdateSwitches();
+
+
+    // Knob and Expression Processing ////////////////////
+
+    // float knobValues[6]; // moved to global
+    float newExpressionValues[6];
+
+    if (!use_preset) {  // TODO Do I want to lock out the knobs when using a preset?
+
+        // Knob 1
+        if (!midi_control[0])   // If not under midi control, use knob ADC
+            pknobValues[0] = knobValues[0] = rdecay.Process();
+        else if (knobMoved(pknobValues[0], rdecay.Process()))  // If midi controlled, watch for knob movement to end Midi control
+            midi_control[0] = false;
+
+        // Knob 2
+        if (!midi_control[1])   // If not under midi control, use knob ADC
+            pknobValues[1] = knobValues[1] = lowfreq.Process();
+        else if (knobMoved(pknobValues[1], lowfreq.Process()))  // If midi controlled, watch for knob movement to end Midi control
+            midi_control[1] = false;
+
+        // Knob 3
+        if (!midi_control[2])   // If not under midi control, use knob ADC
+            pknobValues[2] = knobValues[2] = highfreq.Process();
+        else if (knobMoved(pknobValues[2], highfreq.Process()))  // If midi controlled, watch for knob movement to end Midi control
+            midi_control[2] = false;
+
+        // Knob 4
+        if (!midi_control[3])   // If not under midi control, use knob ADC
+            pknobValues[3] = knobValues[3] = mix.Process();
+        else if (knobMoved(pknobValues[3], mix.Process()))  // If midi controlled, watch for knob movement to end Midi control
+            midi_control[3] = false;
+    
+
+        // Knob 5
+        if (!midi_control[4])   // If not under midi control, use knob ADC
+            pknobValues[4] = knobValues[4] = lowshelf.Process();
+        else if (knobMoved(pknobValues[4], lowshelf.Process()))  // If midi controlled, watch for knob movement to end Midi control
+            midi_control[4] = false;
+    
+
+        // Knob 6
+        if (!midi_control[5])   // If not under midi control, use knob ADC
+            pknobValues[5] = knobValues[5] = highshelf.Process();
+        else if (knobMoved(pknobValues[5], highshelf.Process()))  // If midi controlled, watch for knob movement to end Midi control
+            midi_control[5] = false;
+
+        }
+
+        float vexpression = expression.Process(); // 0 is heel (up), 1 is toe (down)
+        expHandler.Process(vexpression, knobValues, newExpressionValues);
+
+
+        // If in expression set mode, set LEDS accordingly
+        if (expHandler.isExpressionSetMode()) {
+            led1.Set(expHandler.returnLed1Brightness());
+            led2.Set(expHandler.returnLed2Brightness());
+        }
+    
+
+        float vrdecay = newExpressionValues[0];
+        float vlowfreq = newExpressionValues[1];
+        float vhighfreq = newExpressionValues[2];
+        float vmix = newExpressionValues[3];
+        float vlowshelf = newExpressionValues[4];
+        float vhighshelf = newExpressionValues[5];
+
+
+        if (pmix != vmix) {
+            if (knobMoved(pmix, vmix)) {
+                //    A cheap mostly energy constant crossfade from SignalSmith Blog
+                float x2 = 1.0 - vmix;
+                float A = vmix*x2;
+                float B = A * (1.0 + 1.4186 * A);
+                float C = B + vmix;
+                float D = B + x2;
+
+                wetMix = C * C;
+                dryMix = D * D;
+                pmix = vmix;
+            }
+        }
+
+
+        // Set Reverb Parameters ///////////////
+        if (knobMoved(prdecay, vrdecay)) {
+
+            reverb->SetParameter(::Parameter2::LineDecay, (vrdecay * 0.65 + 0.35)); // Range 0.35 to 1.0
+            reverbStub->SetParameter(::Parameter2::LineDecay, (vrdecay * 0.65 + 0.35)); // Range 0.35 to 1.0
+            prdecay = vrdecay;
+        }
+
+        if (knobMoved(plowfreq, vlowfreq)) {
+
+            reverb->SetParameter(::Parameter2::PostLowShelfFrequency, vlowfreq);
+            reverbStub->SetParameter(::Parameter2::PostLowShelfFrequency, vlowfreq);
+            plowfreq = vlowfreq;
+        }
+
+        if (knobMoved(plowshelf, vlowshelf)) {
+
+            reverb->SetParameter(::Parameter2::PostLowShelfGain, vlowshelf);
+            reverbStub->SetParameter(::Parameter2::PostLowShelfGain, vlowshelf);
+            plowshelf = vlowshelf;
+        }
+
+        if (knobMoved(phighfreq, vhighfreq)) {
+
+            reverb->SetParameter(::Parameter2::PostHighShelfFrequency, vhighfreq);
+            reverbStub->SetParameter(::Parameter2::PostHighShelfFrequency, vhighfreq);
+            phighfreq = vhighfreq;
+        }
+
+        if (knobMoved(phighshelf, vhighshelf)) {
+
+            reverb->SetParameter(::Parameter2::PostHighShelfGain, vhighshelf * 0.7 + 0.3);
+            reverbStub->SetParameter(::Parameter2::PostHighShelfGain, vhighshelf * 0.7 + 0.3);
+            phighshelf = vhighshelf;
+        }
+            ProcessCallback(inCache,outCacheStub,sizeCache,reverbStub);
+        }
     }
 }

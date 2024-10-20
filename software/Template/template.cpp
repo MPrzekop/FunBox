@@ -139,23 +139,7 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
                           AudioHandle::OutputBuffer out,
                           size_t                    size)
 {
-    //hw.ProcessAllControls();
-    hw.ProcessAnalogControls();
-    hw.ProcessDigitalControls();
-
-    UpdateButtons();
-    UpdateSwitches();
- 
-
-    float vparam1 = param1.Process();
-    float vparam2 = param2.Process(); 
-    float vparam3 = param3.Process();
-
-    float vparam4 = param4.Process();
-    float vparam5 = param5.Process();
-    float vparam6 = param6.Process();
-
-    // Handle Knob Changes Here
+  
 
 
 
@@ -243,6 +227,23 @@ int main(void)
     hw.StartAudio(AudioCallback);
     while(1)
     {
+        //hw.ProcessAllControls();
+        hw.ProcessAnalogControls();
+        hw.ProcessDigitalControls();
+
+        UpdateButtons();
+        UpdateSwitches();
+    
+
+        float vparam1 = param1.Process();
+        float vparam2 = param2.Process(); 
+        float vparam3 = param3.Process();
+
+        float vparam4 = param4.Process();
+        float vparam5 = param5.Process();
+        float vparam6 = param6.Process();
+
+        // Handle Knob Changes Here
         // Do Stuff Infinitely Here
         System::Delay(10);
     }
